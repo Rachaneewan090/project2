@@ -12,6 +12,9 @@ const char* password = "0805205425";
 #define ALIAS   "DHT22"
 #define TargetWeb "HTML_web"
 
+#define FEEDID "KEPPAFeed"
+#define APIKEY "DtDVWCl0S4vQgKICiMhEEXg6gqyU4CNU"
+
 #define D4 2   // TXD1
 #define DHTPIN D4     // what digital pin we're connected to
 #define DHTTYPE DHT22   // DHT 11
@@ -20,6 +23,13 @@ DHT dht(DHTPIN, DHTTYPE);
 
 WiFiClient client;
 MicroGear microgear(client);
+
+int timer = 0;
+char strhumi[32];
+char strTemp[32];
+
+int humid;
+int temp;
 
 void onMsghandler(char *topic, uint8_t* msg, unsigned int msglen) 
 {
@@ -47,7 +57,7 @@ void setup()
     WiFi.begin(ssid, password);
     while (WiFi.status() != WL_CONNECTED) 
     {
-       delay(250);
+       delay(500);
        Serial.print(".");
     }
 
@@ -59,26 +69,45 @@ void setup()
     microgear.connect(APPID);
 }
 
-void loop() 
-{
-    if (microgear.connected())
-    {
-       microgear.loop();
-       Serial.println("connected");
+void loop(){
+    if (microgear.connected()) {
+        Serial.println("connected");
+        microgear.loop();
 
-       float Humidity = dht.readHumidity();
-       float Temp = dht.readTemperature();  // Read temperature as Celsius (the default)
-       String data = "/" + String(Humidity) + "/" + String(Temp);
-       char msg[128];
-       data.toCharArray(msg,data.length());
-       Serial.println(msg);    
+        if (timer >= 1000) {
+            humid = dht.readHumidity();
+            temp = dht.readTemperature();
+            
+            sprintf(strhumi,"%d",humid);
+            Serial.println(strhumi);
+            Serial.print("Sending -->");
+            microgear.publish("/dht/humi",strhumi);
 
-       microgear.chat(TargetWeb , msg);
+            //temp
+            sprintf(strTemp,"%d",temp);
+            Serial.println(strTemp);
+            Serial.print("Sending -->");
+            microgear.publish("/dht/temp",strTemp);
+            timer = 0;
+
+            if (isnan(humid) || isnan(temp)){
+                Serial.println("Failed to read from DHT sensor");
+                }else{
+                  //สร้างข้อความส่งไปที่ feed
+                  String msgToFeed = "{\"humi\":"+(String)humid+",\"temp\":"+(String)temp+"}";
+                  Serial.println(msgToFeed);
+                  microgear.writeFeed(FEEDID,msgToFeed);
+                  }//else
+        } 
+        else timer += 100;
     }
-   else 
-   {
-    Serial.println("connection lost, reconnect...");
-    microgear.connect(APPID);
-   }
-    delay(1500);
+    else {
+        Serial.println("connection lost, reconnect...");
+        if (timer >= 5000) {
+            microgear.connect(APPID);
+            timer = 0;
+        }
+        else timer += 100;
+    }
+    delay(1000);
 }
